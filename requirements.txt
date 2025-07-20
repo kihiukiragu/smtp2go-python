@@ -1,10 +1,22 @@
-codeclimate-test-reporter>=0.2.0
-cookies>=2.2.0
-coverage>=4.5.0
-pytest>=3.5.0
-pytest-cov>=2.5.0
-python-coveralls>=2.9.0
-PyYAML>=3.12
-requests>=2.20.0
-responses>=0.9.0
-six>=1.11.0
+# Test Reporting & Coverage
+# NOTE: codeclimate-test-reporter is deprecated by Code Climate and may be
+# incompatible with newer Python versions (e.g., Python 3.11+).
+# It's recommended to migrate to their new unified test reporter client.
+# Temporarily commenting out if it causes installation issues.
+# codeclimate-test-reporter==0.2.0
+coverage==7.9.2
+pytest==8.4.1
+pytest-cov==6.2.1
+coveralls==4.0.1 # Renamed from python-coveralls
+
+# HTTP & Web-related
+# Corrected version for 'cookies' package based on pip's available versions.
+cookies==2.2.1
+requests==2.32.4
+responses==0.25.0
+
+# YAML Parsing
+PyYAML==6.0.2
+
+# Python 2/3 Compatibility (often a transitive dependency, might not be needed directly)
+six==1.17.0
