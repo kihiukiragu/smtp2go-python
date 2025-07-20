@@ -2,6 +2,7 @@ import json
 import os
 import requests
 import logging
+import re # Import regex module
 
 # CRITICAL CHANGE: Import API_ROOT and ENDPOINT_SEND from settings.py
 from smtp2go.settings import API_ROOT, ENDPOINT_SEND
@@ -71,22 +72,53 @@ class Smtp2goClient:
     def _prepare_payload(self, **kwargs):
         """
         Prepares the JSON payload for the /email/send API call.
+        This method handles the 'sender' parameter to always produce
+        the "Name <email>" string format for the API if a name is present.
+        It accepts 'sender' as a string or a dictionary, and also
+        accepts 'sender_name' as a separate kwarg.
         """
         payload = {}
 
-        # SENDER FIELD FIX (Support string or dict, match test regex)
-        sender = kwargs.get('sender')
-        logger.debug(f"[_prepare_payload] Processing sender: {sender}")
-        if isinstance(sender, dict):
-            if 'email' not in sender:
+        raw_sender_input = kwargs.get('sender') # This can be string or dict
+        explicit_sender_name_kwarg = kwargs.get('sender_name') # Separate kwarg for sender name
+
+        logger.debug(f"[_prepare_payload] Raw sender input: {raw_sender_input}, explicit_sender_name_kwarg: {explicit_sender_name_kwarg}")
+
+        sender_email = None
+        sender_name = None
+
+        if isinstance(raw_sender_input, dict):
+            if 'email' not in raw_sender_input:
                 raise Smtp2goParameterException("Sender dictionary must contain an 'email' key.")
-            payload['sender'] = sender['email'] # Extract email from dict
-            if 'name' in sender: # Add sender_name if present in dict
-                payload['sender_name'] = sender['name']
-        elif isinstance(sender, str):
-            payload['sender'] = sender
+            sender_email = raw_sender_input['email']
+            sender_name = raw_sender_input.get('name') # Name from dict
+        elif isinstance(raw_sender_input, str):
+            # Try to parse "Name <email>" format from the string
+            match = re.match(r'^(.*)\s*<(.*)>$', raw_sender_input)
+            if match:
+                sender_name = match.group(1).strip()
+                sender_email = match.group(2).strip()
+            else:
+                # If no name in string, just use the email string
+                sender_email = raw_sender_input
         else:
-            raise Smtp2goParameterException("Sender must be an email string or a dictionary with 'email'.") # Matches test regex
+            raise Smtp2goParameterException("Sender must be an email string (e.g., 'Name <email@example.com>' or 'email@example.com') or a dictionary with 'email' (and optional 'name').")
+
+        if not sender_email: # Final check after parsing
+            raise Smtp2goParameterException("Sender email address is missing or invalid.")
+
+        # Prioritize explicit_sender_name_kwarg if provided
+        if explicit_sender_name_kwarg is not None:
+            sender_name = explicit_sender_name_kwarg
+
+        # Construct the final 'sender' string for the API payload
+        if sender_name and isinstance(sender_name, str) and sender_name.strip(): # Ensure name is not empty string
+            payload['sender'] = f"{sender_name.strip()} <{sender_email}>"
+        else:
+            payload['sender'] = sender_email
+
+        # The 'sender_name' parameter should NOT be a separate top-level key in the final payload
+        # if it's already combined into the 'sender' field.
 
         # RECIPIENTS FIELD FIX (Support list of strings/dicts, format as strings for 'to' field)
         recipients = kwargs.get('recipients')
@@ -143,13 +175,6 @@ class Smtp2goClient:
             if template_data:
                 payload['template_data'] = template_data
 
-        # sender_name (top-level parameter, only if not already set by sender dict)
-        # This logic is correct as per SMTP2GO API docs, which allow separate sender_name
-        if 'sender_name' not in payload: # Only add if not derived from sender dict
-            sender_name = kwargs.get('sender_name')
-            if sender_name:
-                payload['sender_name'] = sender_name
-
         # Custom Headers
         custom_headers = kwargs.get('custom_headers')
         if custom_headers:
@@ -179,11 +204,17 @@ class Smtp2goClient:
     def send(self, **kwargs):
         """
         Sends an email using the SMTP2GO /email/send API endpoint.
+        Accepts 'sender' as a string ("Name <email>" or "email") or a dictionary
+        {'email': '...', 'name': '...'}.
+        Also accepts 'sender_name' as a separate kwarg which will be combined
+        with 'sender' email if 'sender' is just an email string.
         """
         try:
             logger.debug(f"[Smtp2goClient.send] kwargs received: {kwargs.keys()}")
             logger.debug(f"[Smtp2goClient.send] recipients kwarg: {kwargs.get('recipients')}")
 
+            # The _prepare_payload method now handles the combination of sender and sender_name
+            # into the single 'sender' field in the payload.
             payload = self._prepare_payload(**kwargs)
 
             payload['api_key'] = self.api_key
@@ -196,7 +227,7 @@ class Smtp2goClient:
             response = requests.post(
                 API_ROOT + ENDPOINT_SEND,
                 headers=headers,
-                json=payload # CRITICAL CHANGE: Reverted to 'json=payload' as per API reference
+                json=payload # As per API reference
             )
 
             json_data = response.json()
@@ -222,4 +253,3 @@ class Smtp2goClient:
         except Exception as e:
             logger.error(f"An unexpected error occurred in Smtp2goClient.send: {e}")
             raise # Re-raise unexpected errors
-

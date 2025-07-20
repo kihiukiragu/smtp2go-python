@@ -40,5 +40,3 @@ class Smtp2goParameterException(Smtp2goBaseException):
 
         self.parameter_name = parameter_name
         self.reason = reason
-
-    

@@ -141,4 +141,3 @@ def test_failed_response_rate_limit_remaining():
     response = get_failed_response_partial()
     assert response.rate_limit.remaining == int(
         HEADERS.get('X-Ratelimit-Remaining'))
-

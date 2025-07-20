@@ -118,5 +118,3 @@ def mock_smtp2go_failed_response():
         status=400,
         headers=HEADERS
     )
-
-    

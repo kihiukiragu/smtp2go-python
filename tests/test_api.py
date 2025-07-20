@@ -56,18 +56,16 @@ def test_no_environment_variable_raises_api_exception():
 
 @responses.activate
 def test_environment_variable_can_be_passed_into_constructor():
+    mock_smtp2go_success_response() # CRITICAL FIX: Add this line to mock the API call
     test_api_key = 'constructor-api-key'
     client = Smtp2goClient(api_key=test_api_key)
     assert client.api_key == test_api_key
-    mock_smtp2go_success_response() # Use the imported helper
-    response = client.send(**PAYLOAD)
-    assert response.success is True
-    assert response.json == SUCCESSFUL_RESPONSE_BODY
-    assert response.status_code == 200
-    assert not response.errors
-    assert response.errors == SUCCESSFUL_RESPONSE_BODY.get(
-        'data').get('failures')
-    assert client.api_key == test_api_key
+    response = client.send(sender='dave@example.com', sender_name='Dave', recipients=['matt@example.com'], subject='Trying out Smtp2go!', text='Test Message', html='<html><body><h1>Test HTML message</h1></body><html>')
+    assert response.success is True # This should now pass
+    assert response.json == SUCCESSFUL_RESPONSE_BODY # Add this assertion back
+    assert response.status_code == 200 # Add this assertion back
+    assert not response.errors # Add this assertion back
+    assert response.errors == SUCCESSFUL_RESPONSE_BODY.get('data').get('failures') # Add this assertion back
 
 
 @responses.activate
@@ -86,7 +84,8 @@ def test_version_header_sent(monkeypatch):
         callback=test_http_headers_callback
     )
     s = Smtp2goClient()
-    s.send(**PAYLOAD)
+    # CRITICAL CHANGE: Pass sender as email string and sender_name as kwarg for this test to align with new _prepare_payload
+    s.send(sender='dave@example.com', sender_name='Dave', recipients=['matt@example.com'], subject='Trying out Smtp2go!', text='Test Message', html='<html><body><h1>Test HTML message</h1></body><html>')
 
 
 @responses.activate
@@ -97,7 +96,8 @@ def test_custom_headers_sent(monkeypatch):
     mock_smtp2go_success_response() # Use the imported helper
 
     s = Smtp2goClient()
-    payload = PAYLOAD.copy()
+    # CRITICAL CHANGE: Pass sender as email string and sender_name as kwarg for this test to align with new _prepare_payload
+    payload = {'sender': 'dave@example.com', 'sender_name': 'Dave', 'recipients': ['matt@example.com'], 'subject': 'Trying out smtp2go', 'text': 'Test Message', 'html': '<html><body><p>Test Message</p></body></html>'}
     payload['custom_headers'] = {custom_header_key: custom_header_val}
 
     s.send(**payload)
@@ -127,7 +127,7 @@ def test_send_with_attachments():
 
     client = Smtp2goClient(api_key="test_api_key")
     resp = client.send(
-        sender='test@example.com',
+        sender='test@example.com', # CRITICAL CHANGE: Use simple email string here
         recipients=['recipient@example.com'],
         subject='Test Subject',
         text='Test Body',
@@ -155,14 +155,49 @@ def test_send_sender_as_dict():
     mock_smtp2go_success_response() # Use the imported helper
     client = Smtp2goClient(api_key="test_api_key")
     resp = client.send(
-        sender={'email': 'sender@example.com', 'name': 'Sender Name'},
+        sender={'email': 'sender@example.com', 'name': 'Sender Name'}, # Pass sender as a dictionary
         recipients=['recipient@example.com'],
         subject='Test Subject',
         text='Test Body'
     )
     assert resp.success
     payload = json.loads(responses.calls[0].request.body)
-    assert payload['sender'] == 'sender@example.com'
+    # CRITICAL CHANGE: Assert that sender is the combined string, and sender_name is NOT in payload
+    assert payload['sender'] == 'Sender Name <sender@example.com>'
+    assert 'sender_name' not in payload
+
+
+@responses.activate
+def test_send_with_sender_name_combined_in_payload():
+    mock_smtp2go_success_response()
+    client = Smtp2goClient(api_key="test_api_key")
+
+    # Test case where sender is email string and sender_name is provided as a separate kwarg
+    resp = client.send(
+        sender='test@example.com',
+        sender_name='Test Sender', # This is the separate kwarg that _prepare_payload will combine
+        recipients=['recipient@example.com'],
+        subject='Test Subject',
+        text='Test Body'
+    )
+    assert resp.success
+    payload = json.loads(responses.calls[0].request.body)
+    assert payload['sender'] == 'Test Sender <test@example.com>'
+    assert 'sender_name' not in payload # Should not be a separate top-level key
+
+    # Test case where sender is just email string, no sender_name
+    responses.reset() # Clear previous mocks
+    mock_smtp2go_success_response() # Re-mock for the second test in this function
+    resp = client.send(
+        sender='no-name@example.com',
+        recipients=['recipient@example.com'],
+        subject='Test Subject',
+        text='Test Body'
+    )
+    assert resp.success
+    payload = json.loads(responses.calls[0].request.body)
+    assert payload['sender'] == 'no-name@example.com'
+    assert 'sender_name' not in payload # Should not be present
 
 
 @responses.activate
@@ -177,7 +212,7 @@ def test_send_recipients_as_dicts():
     )
     assert resp.success
     payload = json.loads(responses.calls[0].request.body)
-    # CRITICAL CHANGE: Assert that 'to' contains formatted strings
+    # Assert that 'to' contains formatted strings
     assert payload['to'] == ['Rec One <rec1@example.com>', 'rec2@example.com']
 
 
@@ -272,16 +307,17 @@ def test_send_method_does_not_raise_exception_if_template_id_present():
 
 def test_send_method_raises_exception_for_invalid_sender_format():
     client = Smtp2goClient(api_key="test_api_key")
-    with pytest.raises(exceptions.Smtp2goParameterException, match=r"Sender must be an email string or a dictionary with 'email'\."):
+    # CRITICAL CHANGE: Update regex to match the exact message from core.py
+    with pytest.raises(exceptions.Smtp2goParameterException, match=r"Sender must be an email string \(e.g., 'Name <email@example.com>' or 'email@example.com'\) or a dictionary with 'email' \(and optional 'name'\)\."):
         client.send(sender=123, recipients=['rec@example.com'], subject='Test', text='Body')
 
 def test_send_method_raises_exception_for_invalid_recipients_format():
     client = Smtp2goClient(api_key="test_api_key")
-    # CRITICAL CHANGE: Update regex to match the exact message from core.py
+    # Update regex to match the exact message from core.py
     with pytest.raises(exceptions.Smtp2goParameterException, match=r"Recipients must be a list of email strings or dictionaries\."):
         client.send(sender='test@example.com', recipients='invalid_string', subject='Test', text='Body')
 
-    # CRITICAL CHANGE: Update regex to match the exact message from core.py
+    # Update regex to match the exact message from core.py
     with pytest.raises(exceptions.Smtp2goParameterException, match=r"Each recipient must be an email string or a dictionary with 'email' \(and optional 'name'\)\."):
         client.send(sender='test@example.com', recipients=['rec@example.com', 123], subject='Test', text='Body')
 
@@ -297,4 +333,3 @@ def test_send_method_raises_exception_for_invalid_attachments_format():
 
     with pytest.raises(exceptions.Smtp2goParameterException, match=r"Each attachment must be a dictionary with 'filename' and 'content' \(base64 encoded\)\."):
         client.send(sender='test@example.com', recipients=['rec@example.com'], subject='Test', text='Body', attachments=[{'filename': 'no_content'}])
-
