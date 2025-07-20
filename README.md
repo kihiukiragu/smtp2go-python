@@ -10,6 +10,16 @@
 
 Python library to facilitate interactions with [smtp2go](https://www.smtp2go.com) API
 
+## Development Installation
+
+```shell
+python3 -m venv ~/.venv # create virtual environment
+source ~/.venv/bin/activate # activate
+pip install -r requirements.txt # install all dependencies
+pytest # Run your test suite # run tests
+pip install -e . # install it locally
+```
+
 ## Installation
 
 Add this line to your application's requirements.txt:
