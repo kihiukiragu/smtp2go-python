@@ -41,17 +41,4 @@ class Smtp2goParameterException(Smtp2goBaseException):
         self.parameter_name = parameter_name
         self.reason = reason
 
-# You might consider adding a more generic API error if needed,
-# but the Smtp2goResponse class already handles API-returned errors.
-# Example (if you wanted to raise an exception for non-successful API responses):
-# class Smtp2goAPIResponseError(Smtp2goBaseException):
-#     """
-#     Raised when the SMTP2GO API returns a non-successful response.
-#     Contains details about the API's error message, status code, and request ID.
-#     """
-#     def __init__(self, message, status_code=None, request_id=None, api_errors=None):
-#         super().__init__(message)
-#         self.status_code = status_code
-#         self.request_id = request_id
-#         self.api_errors = api_errors if api_errors is not None else []
-
+    

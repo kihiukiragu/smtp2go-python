@@ -1,11 +1,11 @@
 import os
-# No need to import 'responses' here if it's not directly used in these functions
+import responses
 import json
 from functools import partial
 
 from smtp2go.core import Smtp2goClient
 from smtp2go.settings import API_ROOT, ENDPOINT_SEND
-from smtp2go.exceptions import Smtp2goAPIKeyException, Smtp2goParameterException
+import smtp2go.exceptions as exceptions # Alias for convenience
 
 
 SEND_ENDPOINT = API_ROOT + ENDPOINT_SEND
@@ -68,14 +68,10 @@ class EnvironmentVariableContextManager():
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.original_value:
             os.environ[self.key] = self.original_value
-        elif self.key in os.environ: # Only delete if it was set by __enter__ and no original value
+        elif self.key in os.environ:
             del os.environ[self.key]
 
 
-# --- Simplified Helper Functions for Responses ---
-# IMPORTANT: These functions DO NOT have @responses.activate.
-# They simply call the Smtp2goClient.send method.
-# The mock responses must be set up by the *calling test function* using responses.add.
 def get_successful_response(payload=None):
     """
     Sends a request that is expected to receive a successful mock response.
@@ -96,9 +92,31 @@ def get_failed_response(payload=None):
         client = Smtp2goClient()
         return client.send(**(payload if payload is not None else PAYLOAD))
 
-# The partial functions are fine as they just wrap the above
 get_successful_response_partial = partial(
     get_successful_response, payload=PAYLOAD)
 get_failed_response_partial = partial(
     get_failed_response, payload=PAYLOAD)
 
+
+# --- NEW: Helper functions for adding specific mocks ---
+def mock_smtp2go_success_response():
+    """Mocks a successful SMTP2GO API response."""
+    responses.add(
+        responses.POST,
+        API_ROOT + ENDPOINT_SEND,
+        json=SUCCESSFUL_RESPONSE_BODY,
+        status=200,
+        headers=HEADERS
+    )
+
+def mock_smtp2go_failed_response():
+    """Mocks a failed SMTP2GO API response."""
+    responses.add(
+        responses.POST,
+        API_ROOT + ENDPOINT_SEND,
+        json=FAILED_RESPONSE_BODY,
+        status=400,
+        headers=HEADERS
+    )
+
+    
