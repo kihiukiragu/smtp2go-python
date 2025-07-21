@@ -121,13 +121,13 @@ def test_send_with_attachments():
 
     dummy_content = base64.b64encode(b"This is a test attachment content.").decode('utf-8')
     attachments_to_send = [
-        {'filename': 'test.txt', 'content': dummy_content, 'mimetype': 'text/plain'},
-        {'filename': 'image.jpg', 'content': dummy_content}
+        {'filename': 'test.txt', 'fileblob': dummy_content, 'mimetype': 'text/plain'}, # CRITICAL FIX: Changed 'content' to 'fileblob'
+        {'filename': 'image.jpg', 'fileblob': dummy_content} # CRITICAL FIX: Changed 'content' to 'fileblob'
     ]
 
     client = Smtp2goClient(api_key="test_api_key")
     resp = client.send(
-        sender='test@example.com', # CRITICAL CHANGE: Use simple email string here
+        sender='test@example.com',
         recipients=['recipient@example.com'],
         subject='Test Subject',
         text='Test Body',
@@ -142,12 +142,12 @@ def test_send_with_attachments():
     assert len(request_body['attachments']) == 2
 
     assert request_body['attachments'][0]['filename'] == 'test.txt'
-    assert request_body['attachments'][0]['content'] == dummy_content
+    assert request_body['attachments'][0]['fileblob'] == dummy_content # Assert 'fileblob'
     assert request_body['attachments'][0]['mimetype'] == 'text/plain'
 
     assert request_body['attachments'][1]['filename'] == 'image.jpg'
-    assert request_body['attachments'][1]['content'] == dummy_content
-    assert request_body['attachments'][1]['mimetype'] == 'application/octet-stream'
+    assert request_body['attachments'][1]['fileblob'] == dummy_content # Assert 'fileblob'
+    assert request_body['attachments'][1]['mimetype'] == 'application/octet-stream' # This assertion should now pass due to default in core.py
 
 
 @responses.activate
@@ -307,17 +307,14 @@ def test_send_method_does_not_raise_exception_if_template_id_present():
 
 def test_send_method_raises_exception_for_invalid_sender_format():
     client = Smtp2goClient(api_key="test_api_key")
-    # CRITICAL CHANGE: Update regex to match the exact message from core.py
     with pytest.raises(exceptions.Smtp2goParameterException, match=r"Sender must be an email string \(e.g., 'Name <email@example.com>' or 'email@example.com'\) or a dictionary with 'email' \(and optional 'name'\)\."):
         client.send(sender=123, recipients=['rec@example.com'], subject='Test', text='Body')
 
 def test_send_method_raises_exception_for_invalid_recipients_format():
     client = Smtp2goClient(api_key="test_api_key")
-    # Update regex to match the exact message from core.py
     with pytest.raises(exceptions.Smtp2goParameterException, match=r"Recipients must be a list of email strings or dictionaries\."):
         client.send(sender='test@example.com', recipients='invalid_string', subject='Test', text='Body')
 
-    # Update regex to match the exact message from core.py
     with pytest.raises(exceptions.Smtp2goParameterException, match=r"Each recipient must be an email string or a dictionary with 'email' \(and optional 'name'\)\."):
         client.send(sender='test@example.com', recipients=['rec@example.com', 123], subject='Test', text='Body')
 
@@ -328,8 +325,19 @@ def test_send_method_raises_exception_for_invalid_custom_headers_format():
 
 def test_send_method_raises_exception_for_invalid_attachments_format():
     client = Smtp2goClient(api_key="test_api_key")
+    # CRITICAL FIX: Correct regex for the list of dictionaries error
     with pytest.raises(exceptions.Smtp2goParameterException, match=r"Attachments must be a list of dictionaries\."):
         client.send(sender='test@example.com', recipients=['rec@example.com'], subject='Test', text='Body', attachments="invalid")
 
-    with pytest.raises(exceptions.Smtp2goParameterException, match=r"Each attachment must be a dictionary with 'filename' and 'content' \(base64 encoded\)\."):
-        client.send(sender='test@example.com', recipients=['rec@example.com'], subject='Test', text='Body', attachments=[{'filename': 'no_content'}])
+    # CRITICAL FIX: Update regex to match 'fileblob' instead of 'content' and ensure correct error message for missing key
+    with pytest.raises(exceptions.Smtp2goParameterException, match=r"Each attachment must be a dictionary with 'filename' and 'fileblob' \(base64 encoded\)\."):
+        client.send(sender='test@example.com', recipients=['rec@example.com'], subject='Test', text='Body', attachments=[{'filename': 'no_fileblob_key'}]) # Test case for missing 'fileblob'
+
+    # CRITICAL FIX: Add a test case for missing filename
+    with pytest.raises(exceptions.Smtp2goParameterException, match=r"Each attachment must be a dictionary with 'filename' and 'fileblob' \(base64 encoded\)\."):
+        client.send(sender='test@example.com', recipients=['rec@example.com'], subject='Test', text='Body', attachments=[{'fileblob': 'some_base64_content'}])
+
+    # CRITICAL FIX: Add a test case for using 'content' instead of 'fileblob'
+    with pytest.raises(exceptions.Smtp2goParameterException, match=r"Each attachment must be a dictionary with 'filename' and 'fileblob' \(base64 encoded\)\."):
+        client.send(sender='test@example.com', recipients=['rec@example.com'], subject='Test', text='Body', attachments=[{'filename': 'test.txt', 'content': 'some_base64_content'}])
+

@@ -3,6 +3,7 @@ import os
 import requests
 import logging
 import re # Import regex module
+import copy # Import copy module for deepcopy
 
 # CRITICAL CHANGE: Import API_ROOT and ENDPOINT_SEND from settings.py
 from smtp2go.settings import API_ROOT, ENDPOINT_SEND
@@ -190,13 +191,16 @@ class Smtp2goClient:
 
             processed_attachments = []
             for att in attachments:
-                if not isinstance(att, dict) or 'filename' not in att or 'content' not in att:
-                    raise Smtp2goParameterException("Each attachment must be a dictionary with 'filename' and 'content' (base64 encoded).")
+                if not isinstance(att, dict) or 'filename' not in att or 'fileblob' not in att:
+                    raise Smtp2goParameterException("Each attachment must be a dictionary with 'filename' and 'fileblob' (base64 encoded).")
 
-                # Add default mimetype if not provided
-                if 'mimetype' not in att:
-                    att['mimetype'] = 'application/octet-stream'
-                processed_attachments.append(att)
+                processed_att = {
+                    "filename": att["filename"],
+                    "fileblob": att["fileblob"]
+                }
+                processed_att['mimetype'] = att.get('mimetype', 'application/octet-stream')
+
+                processed_attachments.append(processed_att)
             payload['attachments'] = processed_attachments
 
         return payload
@@ -213,22 +217,34 @@ class Smtp2goClient:
             logger.debug(f"[Smtp2goClient.send] kwargs received: {kwargs.keys()}")
             logger.debug(f"[Smtp2goClient.send] recipients kwarg: {kwargs.get('recipients')}")
 
-            # The _prepare_payload method now handles the combination of sender and sender_name
-            # into the single 'sender' field in the payload.
             payload = self._prepare_payload(**kwargs)
 
-            payload['api_key'] = self.api_key
+            # Create a copy of the payload for logging purposes to redact sensitive data
+            log_payload = copy.deepcopy(payload)
+            if 'attachments' in log_payload and isinstance(log_payload['attachments'], list):
+                for attachment in log_payload['attachments']:
+                    if 'fileblob' in attachment:
+                        attachment['fileblob'] = '[BASE64_CONTENT_REDACTED]'
+
+            log_payload['api_key'] = '[API_KEY_REDACTED]' # Also redact API key from logs
 
             headers = self._get_headers()
 
             logger.info(f"Sending email via SMTP2GO API. Payload keys: {list(payload.keys())}, To: {payload.get('to')}")
-            logger.debug(f"Full JSON Payload being sent: {json.dumps(payload, indent=2)}")
+            logger.debug(f"Full JSON Payload being sent (redacted): {json.dumps(log_payload, indent=2)}")
+
+            # Add API key to the actual payload for the request (this is the original payload)
+            payload['api_key'] = self.api_key
 
             response = requests.post(
                 API_ROOT + ENDPOINT_SEND,
                 headers=headers,
                 json=payload # As per API reference
             )
+
+            # CRITICAL ADDITION: Log the raw response text
+            logger.debug(f"Raw API Response Status Code: {response.status_code}")
+            logger.debug(f"Raw API Response Body: {response.text}")
 
             json_data = response.json()
             return Smtp2goResponse(json_data, response.status_code, response.headers)
@@ -253,3 +269,4 @@ class Smtp2goClient:
         except Exception as e:
             logger.error(f"An unexpected error occurred in Smtp2goClient.send: {e}")
             raise # Re-raise unexpected errors
+

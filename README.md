@@ -20,6 +20,16 @@ pytest # Run your test suite # run tests
 pip install -e . # install it locally
 ```
 
+Clean up venv & installation:
+```shell
+# Uninstall
+rm -rf ~/.venv/
+find . -type d -name "__pycache__" -exec rm -rf {} +
+rm -rf .pytest_cache/
+find . -type d -name "*.egg-info" -exec rm -rf {} +
+rm -rf build/
+```
+
 ## Installation
 
 Add this line to your application's requirements.txt:
