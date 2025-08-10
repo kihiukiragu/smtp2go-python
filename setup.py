@@ -1,9 +1,16 @@
 from setuptools import setup
 
-from smtp2go.core import __version__
+# Get the version without importing the entire module.
+# This avoids the premature import of 'requests'.
+version = '2.3.2'
+with open("smtp2go/core.py") as f:
+    for line in f:
+        if line.startswith('__version__'):
+            version = eval(line.split('=')[-1])
+            break
 
 setup(name='smtp2go',
-      version=__version__,
+      version=version,
       description='Library for interfacing with the smtp2go API.',
       url='https://github.com/smtp2go-oss/smtp2go-python',
       author='smtp2go',
